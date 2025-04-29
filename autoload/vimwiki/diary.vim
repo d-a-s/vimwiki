@@ -13,12 +13,9 @@ let g:loaded_vimwiki_diary_auto = 1
 
 function! s:prefix_zero(num) abort
   " Add zero prefix to a number
-  if a:num < 10
-    return '0'.a:num
-  endif
-  return a:num
+  let num = type(a:num) == type(0) ? a:num : str2nr(a:num)
+  return num < 10 ? '0'.num : num
 endfunction
-
 
 function! s:diary_path(...) abort
   " Return: diary directory path <String>
@@ -26,6 +23,83 @@ function! s:diary_path(...) abort
   return vimwiki#vars#get_wikilocal('path', idx).vimwiki#vars#get_wikilocal('diary_rel_path', idx)
 endfunction
 
+function! s:change_day(d1, offset, arr = 0) abort
+  let sday = 24*60*60
+  let d2 = a:d1 + sday * a:offset
+  let a = strftime("%z", a:d1)
+  let b = strftime("%z", d2)
+  let df = (str2nr(a) - str2nr(b)) / 100 * 60 * 60
+  let d3 = d2 + df
+  return a:arr ? [d3, df] : d3
+endfunction
+
+function! s:diary_day_link_from_timestamp(timestamp) abort
+  let l:year = strftime('%Y', a:timestamp)
+  let l:month = strftime('%m', a:timestamp)
+  let l:day = strftime('%d', a:timestamp)
+  return s:diary_day_link_from_ymd(l:year, l:month, l:day)
+endfunction
+
+function! s:diary_day_link_format() abort
+  let l:cust = exists('g:vimwiki_diary_path_format') && !empty(g:vimwiki_diary_path_format)
+  return l:cust ? g:vimwiki_diary_path_format : '%Y-%m-%d'
+endfunction
+
+
+function! s:diary_day_link_from_ymd(year, month, day) abort
+  let l:year2 = a:year[-2:]
+  let l:day = s:prefix_zero(a:day)
+  let l:month = s:prefix_zero(a:month)
+  let l:fmt = s:diary_day_link_format()
+
+  let l:relative_path = g:vimwiki_diary_path_format
+  let l:relative_path = substitute(l:relative_path, '%Y', a:year, 'g')
+  let l:relative_path = substitute(l:relative_path, '%y', l:year2, 'g')
+  let l:relative_path = substitute(l:relative_path, '%m', l:month, 'g')
+  let l:relative_path = substitute(l:relative_path, '%d', l:day, 'g')
+
+  return l:relative_path
+endfunction
+
+function! s:rx_escape(s) abort
+  return escape(a:s, '.*+?[](){}^$|\\')
+endfunction
+
+function! s:timestamp_from_diary_day_link_from(path) abort
+  let pref = s:rx_escape(vimwiki#vars#get_wikilocal('diary_rel_path'))
+  let pat = s:rx_escape(s:diary_day_link_format())
+  let loc = {}
+  let i = 1
+  while 1
+    let m = match(pat, '%[Yymd]')
+    if m < 0 | break | endif
+    let c = pat[m+1]
+    let s = c == 'Y' ? 4 : 2
+    let pat = substitute(pat, '%'.c, '(\\d{'.s.'})', '')
+    let pat = substitute(pat, '%'.c, '\\d{'.s.'}', 'g')
+    let loc[c] = i
+    let i += 1
+  endwhile
+  if !loc['Y'] || !loc['m'] || !loc['d'] | return | endif
+  let mm = matchlist(a:path, '\v' . pref . pat)
+  if !len(mm) | return | endif
+  let ds = mm[loc['Y']] . '-' . mm[loc['m']] . '-' . mm[loc['d']]
+  let epoch = strptime('%Y-%m-%d', ds)
+  return epoch
+endfunction
+
+function! s:diary_move_from_current(dir) abort
+  let curfile = vimwiki#path#path_norm(expand('%:p'))
+  let stamp = s:timestamp_from_diary_day_link_from(curfile)
+  if !stamp | return 0 | endif
+  let stamp2 = s:change_day(stamp, a:dir)
+  " echo stamp . ' '. stamp2 . ' ' .strftime("%Y-%m-%d %H:%M:%S %z", stamp2)
+  " let fn2 = s:diary_day_link_from_timestamp(stamp2)
+  let link = 'diary:'.vimwiki#diary#diary_date_link(stamp2)
+  " echo link
+  call vimwiki#base#open_link(':e ', link)
+  return 1
+endfunction
 
 function! s:diary_index(...) abort
   " Return: diary index file path <String>
@@ -98,10 +172,10 @@ function! vimwiki#diary#diary_date_link(...) abort
     let l:computed_timestamp = l:middle_of_computed_year - l:day_of_computed_year*l:day_s
 
   else "daily
-    let l:computed_timestamp = localtime() + l:delta_periods*l:day_s
+    let l:computed_timestamp = l:timestamp + l:delta_periods*l:day_s
   endif
 
-  return strftime('%Y-%m-%d', l:computed_timestamp)
+  return s:diary_day_link_from_timestamp(l:computed_timestamp)
 
 endfunction
 
@@ -360,11 +434,13 @@ endfunction
 
 
 function! vimwiki#diary#goto_next_day() abort
+  if s:diary_move_from_current(1) | return | endif
+
   " Jump to next day
   let link = ''
   let [idx, links] = s:get_position_links(expand('%:t:r'))
 
-  if idx == (len(links) - 1)
+  if idx == 0
     return
   endif
 
@@ -382,6 +458,8 @@ endfunction
 
 
 function! vimwiki#diary#goto_prev_day() abort
+  if s:diary_move_from_current(-1) | return | endif
+
   " Jump to previous day
   let link = ''
   let [idx, links] = s:get_position_links(expand('%:t:r'))
@@ -503,10 +581,7 @@ endfunction
 
 function! vimwiki#diary#calendar_action(day, month, year, week, dir) abort
   " Callback function for Calendar.vim
-  let day = s:prefix_zero(a:day)
-  let month = s:prefix_zero(a:month)
-
-  let link = a:year.'-'.month.'-'.day
+  let link = s:diary_day_link_from_ymd(a:year, a:month, a:day)
   if winnr('#') == 0
     if a:dir ==? 'V'
       vsplit
@@ -530,10 +605,10 @@ function! vimwiki#diary#calendar_sign(day, month, year) abort
   if exists('g:vimwiki_list') && len(g:vimwiki_list) <= 0
     return
   endif
-  let day = s:prefix_zero(a:day)
-  let month = s:prefix_zero(a:month)
-  let sfile = vimwiki#vars#get_wikilocal('path') . vimwiki#vars#get_wikilocal('diary_rel_path')
-        \ . a:year.'-'.month.'-'.day.vimwiki#vars#get_wikilocal('ext')
+  let sfile = vimwiki#vars#get_wikilocal('path')
+      \ . vimwiki#vars#get_wikilocal('diary_rel_path')
+      \ . s:diary_day_link_from_ymd(a:year, a:month, a:day)
+      \ . vimwiki#vars#get_wikilocal('ext')
   return filereadable(expand(sfile))
 endfunction
 
