@@ -266,6 +266,8 @@ function! s:read_captions(files) abort
   " Return: <Dic>: key -> caption
   let result = {}
   let caption_level = vimwiki#vars#get_wikilocal('diary_caption_level')
+  let diary_file = vimwiki#path#path_norm(s:diary_index())
+  let diary_dir = fnamemodify(diary_file, ':h:~')
 
   for fl in a:files
     " Remove paths and extensions
@@ -298,6 +300,9 @@ function! s:read_captions(files) abort
     endif
 
     let fl_key = substitute(fnamemodify(fl, ':t'), vimwiki#vars#get_wikilocal('ext').'$', '', '')
+    let fl_path = substitute(fl, '^'.s:rx_escape(diary_dir).'[/\\]*', '', '')
+    let fl_path = substitute(fl_path, vimwiki#vars#get_wikilocal('ext').'$', '', '')
+    let fl_captions['path'] = fl_path
     let result[fl_key] = fl_captions
   endfor
   return result
@@ -308,7 +313,7 @@ function! vimwiki#diary#get_diary_files() abort
   " Return: <list> diary file names
   let rx = '^\d\{4}-\d\d-\d\d'
   let s_files = glob(vimwiki#vars#get_wikilocal('path').
-        \ vimwiki#vars#get_wikilocal('diary_rel_path').'*'.vimwiki#vars#get_wikilocal('ext'))
+        \ vimwiki#vars#get_wikilocal('diary_rel_path').'**/*'.vimwiki#vars#get_wikilocal('ext'))
   let files = split(s_files, '\n')
   call filter(files, 'fnamemodify(v:val, ":t") =~# "'.escape(rx, '\').'"')
 
@@ -528,7 +533,7 @@ function! vimwiki#diary#generate_diary_section() abort
           endif
 
           let bullet = vimwiki#lst#default_symbol().' '
-          let entry = substitute(top_link_tpl, '__LinkUrl__', fl, '')
+          let entry = substitute(top_link_tpl, '__LinkUrl__', get(captions,'path',fl), '')
           let entry = substitute(entry, '__LinkDescription__', topcap, '')
           let wiki_nr = vimwiki#vars#get_bufferlocal('wiki_nr')
           let extension = vimwiki#vars#get_wikilocal('ext', wiki_nr)
