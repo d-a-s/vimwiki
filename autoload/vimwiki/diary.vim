@@ -65,7 +65,7 @@ function! s:rx_escape(s) abort
   return escape(a:s, '.*+?[](){}^$|\\')
 endfunction
 
-function! s:timestamp_from_diary_day_link_from(path) abort
+function! s:timestamp_from_diary_day_link(path) abort
   let pref = s:rx_escape(vimwiki#vars#get_wikilocal('diary_rel_path'))
   let pat = s:rx_escape(s:diary_day_link_format())
   let loc = {}
@@ -90,7 +90,7 @@ endfunction
 
 function! s:diary_move_from_current(dir) abort
   let curfile = vimwiki#path#path_norm(expand('%:p'))
-  let stamp = s:timestamp_from_diary_day_link_from(curfile)
+  let stamp = s:timestamp_from_diary_day_link(curfile)
   if !stamp | return 0 | endif
   let stamp2 = s:change_day(stamp, a:dir)
   " echo stamp . ' '. stamp2 . ' ' .strftime("%Y-%m-%d %H:%M:%S %z", stamp2)
