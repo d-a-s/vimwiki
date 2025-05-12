@@ -493,6 +493,8 @@ function! vimwiki#base#generate_links(create, ...) abort
             " switch to [[URL|DESCRIPTION]] if caption is not empty
             " Link2 is the same for mardown syntax
             let link_tpl = vimwiki#vars#get_syntaxlocal('Link2')
+          else
+            let link_caption = link
           endif
         endif
         " Replace Url, Description

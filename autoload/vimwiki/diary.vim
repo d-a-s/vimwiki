@@ -65,7 +65,7 @@ function! s:rx_escape(s) abort
   return escape(a:s, '.*+?[](){}^$|\\')
 endfunction
 
-function! s:timestamp_from_diary_day_link(path) abort
+function! s:timestamp_from_diary_day_link(path, dict = 0) abort
   let pref = s:rx_escape(vimwiki#vars#get_wikilocal('diary_rel_path'))
   let pat = s:rx_escape(s:diary_day_link_format())
   let loc = {}
@@ -83,9 +83,12 @@ function! s:timestamp_from_diary_day_link(path) abort
   if !loc['Y'] || !loc['m'] || !loc['d'] | return | endif
   let mm = matchlist(a:path, '\v' . pref . pat)
   if !len(mm) | return | endif
-  let ds = mm[loc['Y']] . '-' . mm[loc['m']] . '-' . mm[loc['d']]
-  let epoch = strptime('%Y-%m-%d', ds)
-  return epoch
+  let y = mm[loc['Y']]
+  let m = mm[loc['m']]
+  let d = mm[loc['d']]
+  let ds = y.'-'.m.'-'.d
+  let e = strptime('%Y-%m-%d', ds)
+  return !a:dict ? e : { 'epoch':e, 'year':y, 'month':m, 'day':d } 
 endfunction
 
 function! s:diary_move_from_current(dir) abort
@@ -299,6 +302,7 @@ function! s:read_captions(files) abort
       endif
     endif
 
+    let fl_captions['time'] = s:timestamp_from_diary_day_link(fl, 1)
     let fl_key = substitute(fnamemodify(fl, ':t'), vimwiki#vars#get_wikilocal('ext').'$', '', '')
     let fl_path = substitute(fl, '^'.s:rx_escape(diary_dir).'[/\\]*', '', '')
     let fl_path = substitute(fl_path, vimwiki#vars#get_wikilocal('ext').'$', '', '')
@@ -330,8 +334,9 @@ function! s:group_links(links) abort
   let p_year = 0
   let p_month = 0
   for fl in sort(keys(a:links))
-    let year = strpart(fl, 0, 4)
-    let month = strpart(fl, 5, 2)
+    let time = get(a:links[fl], 'time', {})
+    let year = get(time, 'year', strpart(fl, 0, 4))
+    let month = get(time, 'month', strpart(fl, 5, 2))
     if p_year != year
       let result[year] = {}
       let p_month = 0
@@ -533,8 +538,12 @@ function! vimwiki#diary#generate_diary_section() abort
           endif
 
           let bullet = vimwiki#lst#default_symbol().' '
+          let time = get(captions, 'time', {})
+          let epoch = get(time, 'epoch', 0)
+          let wd = strftime('%u', epoch)
+          let wd = wd == '7' ? ' SU' : ''
           let entry = substitute(top_link_tpl, '__LinkUrl__', get(captions,'path',fl), '')
-          let entry = substitute(entry, '__LinkDescription__', topcap, '')
+          let entry = substitute(entry, '__LinkDescription__', topcap.wd, '')
           let wiki_nr = vimwiki#vars#get_bufferlocal('wiki_nr')
           let extension = vimwiki#vars#get_wikilocal('ext', wiki_nr)
           let entry = substitute(entry, '__FileExtension__', extension, 'g')
